@@ -59,7 +59,7 @@ class BanditArms:
         plt.show(ax)
 
 
-class BanditTestbed:
+class BanditModel:
     def __init__(self, bandit, epsilon):
         self.epsilon = epsilon
         self.bandit = bandit
@@ -78,12 +78,26 @@ class BanditTestbed:
         self.list_timesteps = []
         self.list_sum_reward = []
 
-    def run(self, time_steps):
+    def run(self, time_steps, display_results):
+        # Have the model learn the reward distribution for time_steps iterations.
         for i in range(0, time_steps):
             action = self.choose_action()
             reward = self.bandit.get_rewards(action=action, num_samples=1)[0]
             self.update_estimator(action, reward)
             self.update_perf_stats(action, reward, i)
+
+        self.print_output()
+
+        df = pd.DataFrame({"Epsilon": [self.epsilon] * time_steps,
+                           "Timestep": self.list_timesteps,
+                           "SumReward": self.list_sum_reward,
+                           "CountOptimal": self.list_count_correct_action})
+        df["PercentOptimal"] = df["CountOptimal"] / (df["Timestep"] + 1)
+        df["AverageReward"] = df["SumReward"] / (df["Timestep"] + 1)
+
+        if display_results:
+            BanditTestbed.plot_results(df)
+        return df
 
     def choose_action(self):
         random_num = random.uniform(0, 1)
@@ -112,17 +126,7 @@ class BanditTestbed:
         self.list_count_correct_action.append(self.count_correct_action)
         self.list_timesteps.append(timestep)
 
-    def display_results(self):
-        df = pd.DataFrame({"Timestep": self.list_timesteps,
-                           "SumReward": self.list_sum_reward,
-                           "CountOptimal": self.list_count_correct_action})
-        df["PercentOptimal"] = df["CountOptimal"] / (df["Timestep"] + 1)
-        df["AverageReward"] = df["SumReward"] / (df["Timestep"] + 1)
-        ax = sns.lineplot(x="Timestep", y="PercentOptimal", data=df)
-        plt.show(ax)
-        ax = sns.lineplot(x="Timestep", y="AverageReward", data=df)
-        plt.show(ax)
-
+    def print_output(self):
         for action in self.bandit.get_actions():
             actual = self.bandit.arms[action].mean()
             estimate = self.reward_estimate[action]
@@ -130,11 +134,28 @@ class BanditTestbed:
             print("{}) Actual vs Estimate: {:.3f} vs {:.3f}. Diff {:.3f}".format(action, actual, estimate, diff))
 
 
+class BanditTestbed:
+    @staticmethod
+    def run_experiment(bandit):
+        time_steps = 1000
+        display_indiv_results = False
+        df1 = BanditModel(bandit=bandit, epsilon=0.00).run(time_steps, display_indiv_results)
+        df2 = BanditModel(bandit=bandit, epsilon=0.01).run(time_steps, display_indiv_results)
+        df3 = BanditModel(bandit=bandit, epsilon=0.1).run(time_steps, display_indiv_results)
+        df = df1.append(df2).append(df3)
+        BanditTestbed.plot_results(df)
+
+    @staticmethod
+    def plot_results(df):
+        ax = sns.lineplot(x="Timestep", y="PercentOptimal", hue="Epsilon", data=df)
+        plt.show(ax)
+        ax = sns.lineplot(x="Timestep", y="AverageReward", hue="Epsilon", data=df)
+        plt.show(ax)
+
+
 if __name__ == "__main__":
     bandit = BanditArms()
     bandit.show_distribution(num_samples=30)
 
-    # Build a Distribution Estimator
-    testbed = BanditTestbed(bandit=bandit, epsilon=0.3)
-    testbed.run(time_steps=5000)
-    testbed.display_results()
+    BanditTestbed.run_experiment(bandit)
+
